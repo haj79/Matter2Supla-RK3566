@@ -1,0 +1,81 @@
+name: Stage 1 - Matter SDK Android ARM64 libraries
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  matter-controller-arm64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout our repository
+        uses: actions/checkout@v4
+
+      - name: Prepare system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git python3 python3-venv python3-pip \
+            cmake ninja-build pkg-config unzip zip curl wget \
+            libssl-dev libglib2.0-dev libdbus-1-dev
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-34 build-tools;34.0.0 ndk;28.2.13676358'
+
+      - name: Set SDK environment
+        run: |
+          echo "ANDROID_HOME=${ANDROID_SDK_ROOT}" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=${ANDROID_SDK_ROOT}/ndk/28.2.13676358" >> "$GITHUB_ENV"
+
+      - name: Checkout official Matter SDK
+        run: |
+          git clone --depth 1 https://github.com/project-chip/connectedhomeip.git matter-sdk
+          cd matter-sdk
+          git rev-parse HEAD | tee ../matter-sdk-revision.txt
+          # Matter's own bootstrap will fetch the dependencies required by this revision.
+
+      - name: Bootstrap Matter SDK build environment
+        working-directory: matter-sdk
+        shell: bash
+        run: |
+          set -euo pipefail
+          source scripts/bootstrap.sh
+
+      - name: Build Android ARM64 controller libraries (not CHIPTool APK)
+        working-directory: matter-sdk
+        shell: bash
+        run: |
+          set -euo pipefail
+          source scripts/activate.sh
+          ./scripts/build/build_examples.py --target android-arm64-java-matter-controller build
+
+      - name: Collect controller libraries
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p stage1-output
+          cp matter-sdk-revision.txt stage1-output/
+          find matter-sdk/out/android-arm64-java-matter-controller -type f \
+            \( -name 'libCHIPController.so' -o -name 'libc++_shared.so' -o -name 'CHIPController.jar' \) \
+            -print -exec cp -v {} stage1-output/ \;
+          test -s stage1-output/libCHIPController.so
+          test -s stage1-output/CHIPController.jar
+          file stage1-output/libCHIPController.so
+
+      - name: Upload Matter SDK ARM64 libraries
+        uses: actions/upload-artifact@v4
+        with:
+          name: matter-sdk-android-arm64-stage1
+          path: stage1-output/
+          if-no-files-found: error
+          retention-days: 14
