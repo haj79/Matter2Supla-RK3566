@@ -7,9 +7,11 @@ permissions:
   contents: read
 
 jobs:
-  matter-controller-arm64:
+ matter-controller-arm64:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
+    env:
+      TERM: xterm
     steps:
       - name: Checkout our repository
         uses: actions/checkout@v4
