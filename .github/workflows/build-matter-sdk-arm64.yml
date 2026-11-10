@@ -7,9 +7,11 @@ permissions:
   contents: read
 
 jobs:
-  matter-controller-arm64:
+ matter-controller-arm64:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
+    env:
+      TERM: xterm
     steps:
       - name: Checkout our repository
         uses: actions/checkout@v4
@@ -48,16 +50,16 @@ jobs:
         working-directory: matter-sdk
         shell: bash
         run: |
-          set -euo pipefail
+          set -eo pipefail
           source scripts/bootstrap.sh
 
       - name: Build Android ARM64 controller libraries (not CHIPTool APK)
         working-directory: matter-sdk
         shell: bash
         run: |
-          set -euo pipefail
+          set -eo pipefail
           source scripts/activate.sh
-          ./scripts/build/build_examples.py --target android-arm64-java-matter-controller build
+          ./scripts/build/build_examples.py targets
 
       - name: Collect controller libraries
         shell: bash
