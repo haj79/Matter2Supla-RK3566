@@ -62,7 +62,7 @@ jobs:
       - name: Collect controller libraries
         shell: bash
         run: |
-          set -euo pipefail
+          set -eo pipefail
           mkdir -p stage1-output
           cp matter-sdk-revision.txt stage1-output/
           find matter-sdk/out/android-arm64-java-matter-controller -type f \
