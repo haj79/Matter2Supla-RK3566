@@ -48,14 +48,14 @@ jobs:
         working-directory: matter-sdk
         shell: bash
         run: |
-          set -euo pipefail
+          set -eo pipefail
           source scripts/bootstrap.sh
 
       - name: Build Android ARM64 controller libraries (not CHIPTool APK)
         working-directory: matter-sdk
         shell: bash
         run: |
-          set -euo pipefail
+          set -eo pipefail
           source scripts/activate.sh
           ./scripts/build/build_examples.py --target android-arm64-java-matter-controller build
 
