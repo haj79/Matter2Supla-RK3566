@@ -47,13 +47,15 @@ jobs:
           git clone --depth 1 https://github.com/project-chip/connectedhomeip.git matter-sdk
           git -C matter-sdk rev-parse HEAD > matter-sdk-revision.txt
 
-      - name: Bootstrap Matter SDK
+            - name: Checkout Matter SDK submodules
         working-directory: matter-sdk
         shell: bash
         run: |
-          # No `set -u` here: Matter's environment scripts use optional variables.
           set -eo pipefail
-          source scripts/bootstrap.sh
+          python3 scripts/checkout_submodules.py --shallow --platform android
+          test -f third_party/lwip/repo/src/core/ipv4/icmp.c
+          test -f third_party/lwip/repo/src/netif/ethernet.c
+          test -f third_party/uriparser/repo/src/UriParse.c
 
       - name: Generate Android ARM64 Matter build files
         working-directory: matter-sdk
