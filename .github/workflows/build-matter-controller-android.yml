@@ -68,8 +68,7 @@ jobs:
           source scripts/activate.sh
           TARGET_CPU=arm64 ./scripts/examples/android_app_ide.sh
           # These are real GN targets, not build_examples.py target names.
-          gn desc out/android_arm64 //src/controller/java:jni type
-          gn desc out/android_arm64 //src/controller/java:java type
+        
 
       - name: Build Matter controller JNI and Java libraries
         working-directory: matter-sdk
