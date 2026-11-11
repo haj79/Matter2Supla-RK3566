@@ -1,0 +1,79 @@
+name: Stage 4 - Matter JNI Android loader (ARM64)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build-loader:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-34 build-tools;34.0.0 ndk;28.2.13676358'
+
+      - name: Get verified Stage 2 libraries
+        uses: actions/download-artifact@v4
+        with:
+          name: matter-controller-android-arm64-stage2
+          run-id: 42983060681
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: stage4-input
+
+      - name: Inspect and install native and Java libraries
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s stage4-input/CHIPController.jar
+          test -s stage4-input/libCHIPController.so
+          echo 'db5e6625a9dae64fdf73e1c3ddabdfc83c6f11420bf209d7cf9bbbb5009178c7  stage4-input/CHIPController.jar' | sha256sum -c -
+          echo '4d6be4abbf1139f0826193fd0a190cc4f79a039300a536d38cbac6fab2efa544  stage4-input/libCHIPController.so' | sha256sum -c -
+          file stage4-input/libCHIPController.so
+          unzip -t stage4-input/CHIPController.jar | tail -n 1
+          mkdir -p stage4/android/app/libs stage4/android/app/src/main/jniLibs/arm64-v8a
+          cp stage4-input/CHIPController.jar stage4/android/app/libs/
+          cp stage4-input/libCHIPController.so stage4/android/app/src/main/jniLibs/arm64-v8a/
+          cp "$ANDROID_SDK_ROOT/ndk/28.2.13676358/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so" \
+             stage4/android/app/src/main/jniLibs/arm64-v8a/
+
+      - name: Configure Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Compile standalone Stage 4 diagnostic APK
+        shell: bash
+        run: gradle -p stage4/android --no-daemon :app:assembleDebug
+
+      - name: Validate generated APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=stage4/android/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -l "$APK" | grep -E 'lib/arm64-v8a/(libCHIPController|libc\+\+_shared)\.so'
+          sha256sum "$APK" > stage4-apk-sha256.txt
+
+      - name: Upload Stage 4 diagnostic APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: matter2supla-stage4-loader-arm64
+          path: |
+            stage4/android/app/build/outputs/apk/debug/app-debug.apk
+            stage4-apk-sha256.txt
+          if-no-files-found: error
+          retention-days: 14
