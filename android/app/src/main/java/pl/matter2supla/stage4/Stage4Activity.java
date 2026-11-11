@@ -38,6 +38,30 @@ public final class Stage4Activity extends Activity {
             android.util.Log.e(TAG, "Java API unavailable", failure);
         }
 
+        // Prevent JNI_OnLoad from aborting the process when essential Java
+        // classes expected by the native Matter library are missing.
+        boolean jniClassesPresent = true;
+        for (String name : new String[] {
+                "chip.devicecontroller.ChipDeviceControllerException",
+                "chip.platform.AndroidChipPlatformException"
+        }) {
+            try {
+                Class.forName(name, false, getClassLoader());
+                result.append("JNI class: OK — ").append(name).append('\n');
+            } catch (Throwable failure) {
+                jniClassesPresent = false;
+                result.append("JNI class: MISSING — ").append(name).append(" — ")
+                      .append(failure).append('\n');
+                android.util.Log.e(TAG, "Required JNI class unavailable: " + name, failure);
+            }
+        }
+
+        if (!jniClassesPresent) {
+            result.append("\nNative loading skipped to avoid a fatal JNI abort.\n");
+            text.setText(result.toString());
+            return;
+        }
+
         try {
             // JNI_OnLoad executes here, so failures are reported, not hidden.
             System.loadLibrary("CHIPController");
@@ -51,7 +75,7 @@ public final class Stage4Activity extends Activity {
         result.append("\nNo Matter controller has been initialized.\n")
               .append("No devices are paired. No service started.\n")
               .append("SUPLA(t) / Zigbee Stage 8 unchanged.\n")
-              .append("Build: 11.11.2026 @lukasz06\n");
+              .append("Build: Stage 4.2 — 11.11.2026 @lukasz06\n");
         text.setText(result.toString());
     }
 }
