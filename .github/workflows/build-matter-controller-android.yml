@@ -41,13 +41,14 @@ jobs:
           echo "ANDROID_HOME=${ANDROID_SDK_ROOT}" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_HOME=${ANDROID_SDK_ROOT}/ndk/28.2.13676358" >> "$GITHUB_ENV"
 
+      
       - name: Checkout official Matter SDK
         shell: bash
         run: |
           git clone --depth 1 https://github.com/project-chip/connectedhomeip.git matter-sdk
           git -C matter-sdk rev-parse HEAD > matter-sdk-revision.txt
 
-            - name: Checkout Matter SDK submodules
+      - name: Checkout Matter SDK submodules
         working-directory: matter-sdk
         shell: bash
         run: |
@@ -56,6 +57,8 @@ jobs:
           test -f third_party/lwip/repo/src/core/ipv4/icmp.c
           test -f third_party/lwip/repo/src/netif/ethernet.c
           test -f third_party/uriparser/repo/src/UriParse.c
+
+
 
       - name: Generate Android ARM64 Matter build files
         working-directory: matter-sdk
