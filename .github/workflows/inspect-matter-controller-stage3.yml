@@ -1,0 +1,91 @@
+name: Stage 3 - Inspect Matter Controller ARM64
+
+on:
+  workflow_dispatch:
+    inputs:
+      stage2_run_id:
+        description: 'Successful Stage 2 workflow run ID'
+        required: true
+        default: '42983060681'
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  inspect-controller:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Download Stage 2 libraries
+        uses: actions/download-artifact@v4
+        with:
+          name: matter-controller-android-arm64-stage2
+          run-id: ${{ inputs.stage2_run_id }}
+          github-token: ${{ github.token }}
+          path: stage2-input
+
+      - name: Inspect libraries and write report
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p stage3-report
+          REPORT="$PWD/stage3-report/inspection.txt"
+          {
+            echo 'Matter2Supla RK3566 - Stage 3 binary inspection'
+            echo "Stage 2 run: ${{ inputs.stage2_run_id }}"
+            echo "Inspection date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo
+            echo '=== Downloaded files ==='
+            find stage2-input -type f -printf '%P (%s bytes)\n' | sort
+            echo
+            echo '=== Stage 2 revision ==='
+            if [ -f stage2-input/matter-sdk-revision.txt ]; then
+              cat stage2-input/matter-sdk-revision.txt
+            else
+              echo 'Revision file not present'
+            fi
+            echo
+            echo '=== File types ==='
+            find stage2-input -type f \( -name '*.so' -o -name '*.jar' \) -print0 | while IFS= read -r -d '' f; do
+              file "$f"
+            done
+            echo
+            echo '=== SHA256 ==='
+            find stage2-input -type f \( -name '*.so' -o -name '*.jar' \) -print0 | sort -z | xargs -0 -r sha256sum
+            echo
+            echo '=== ELF dependencies / SONAME / RPATH ==='
+            while IFS= read -r -d '' f; do
+              echo "--- $f ---"
+              readelf -h "$f" | grep -E 'Class:|Machine:|Type:' || true
+              readelf -d "$f" | grep -E 'NEEDED|SONAME|RPATH|RUNPATH' || true
+              echo 'JNI symbol examples:'
+              nm -D --defined-only "$f" 2>/dev/null | grep -E 'Java_|JNI_OnLoad' | head -n 25 || true
+            done < <(find stage2-input -type f -name '*.so' -print0)
+            echo
+            echo '=== JAR contents (first 100 entries) ==='
+            while IFS= read -r -d '' f; do
+              echo "--- $f ---"
+              unzip -Z -1 "$f" | head -n 100 || true
+              echo "Classes count: $(unzip -Z -1 "$f" | grep -c '\.class$' || true)"
+            done < <(find stage2-input -type f -name '*.jar' -print0)
+            echo
+            echo '=== Required files ==='
+            test -s stage2-input/libCHIPController.so
+            test -s stage2-input/CHIPController.jar
+            file stage2-input/libCHIPController.so | grep -q 'ELF 64-bit'
+            readelf -h stage2-input/libCHIPController.so | grep -q 'AArch64'
+            unzip -t stage2-input/CHIPController.jar | tail -n 1
+            echo 'PASS: Stage 2 libraries exist and ARM64 ELF / JAR basic checks passed.'
+            echo 'NOTE: This is NOT a runtime or Matter commissioning test.'
+          } | tee "$REPORT"
+
+      - name: Upload inspection report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: matter-stage3-inspection-report
+          path: stage3-report/
+          if-no-files-found: warn
+          retention-days: 14
