@@ -2,6 +2,10 @@ name: Stage 2 - Native Matter controller for Android ARM64
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/build-matter-controller-android.yml'
 
 permissions:
   contents: read
@@ -102,10 +106,11 @@ jobs:
           test -s stage2-output/libCHIPController.so
           test -s stage2-output/CHIPController.jar
           # Fail early if this build cannot control devices or read their metadata.
-          jar tf stage2-output/CHIPInteractionModel.jar | grep -Fq 'chip/devicecontroller/GetConnectedDeviceCallbackJni\\$GetConnectedDeviceCallback.class'
-          jar tf stage2-output/CHIPInteractionModel.jar | grep -Fq 'chip/devicecontroller/ReportCallback.class'
-          jar tf stage2-output/CHIPInteractionModel.jar | grep -Fq 'chip/devicecontroller/model/NodeState.class'
-          jar tf stage2-output/CHIPInteractionModel.jar | grep -Fq 'chip/devicecontroller/ChipClusters\\$OnOffCluster.class'
+          jar tf stage2-output/CHIPInteractionModel.jar > /tmp/matter-java-classes.txt
+          grep -Fq 'chip/devicecontroller/GetConnectedDeviceCallbackJni$GetConnectedDeviceCallback.class' /tmp/matter-java-classes.txt
+          grep -Fq 'chip/devicecontroller/ReportCallback.class' /tmp/matter-java-classes.txt
+          grep -Fq 'chip/devicecontroller/model/NodeState.class' /tmp/matter-java-classes.txt
+          grep -Fq 'chip/devicecontroller/ChipClusters$OnOffCluster.class' /tmp/matter-java-classes.txt
           file stage2-output/libCHIPController.so
           ( cd stage2-output && sha256sum libCHIPController.so *.jar > SHA256SUMS.txt )
 
