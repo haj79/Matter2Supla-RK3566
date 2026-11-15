@@ -76,7 +76,14 @@ jobs:
         run: |
           set -eo pipefail
           source scripts/activate.sh
-          ninja -C out/android_arm64 src/controller/java:jni src/controller/java:java
+          ninja -C out/android_arm64 \
+            src/controller/java:jni \
+            src/controller/java:java \
+            src/controller/java:android_chip_im \
+            src/controller/java:chipcluster \
+            src/controller/java:chipclusterID
+          # All Java controller dependencies are required for CASE, ON/OFF and Basic Information.
+          # The standalone CHIPController.jar is only the controller shell.
 
       - name: Collect built Matter controller libraries
         shell: bash
@@ -87,11 +94,20 @@ jobs:
           find matter-sdk/out/android_arm64 -type f \
             \( -name 'libCHIPController.so' -o -name 'CHIPController.jar' \) \
             -print -exec cp -v {} stage2-output/ \;
+          for jar in CHIPController.jar CHIPInteractionModel.jar CHIPClusters.jar CHIPClusterID.jar; do
+            found=$(find matter-sdk/out/android_arm64 -type f -name "$jar" -print -quit)
+            test -n "$found"
+            cp -v "$found" "stage2-output/$jar"
+          done
           test -s stage2-output/libCHIPController.so
           test -s stage2-output/CHIPController.jar
+          # Fail early if this build cannot control devices or read their metadata.
+          jar tf stage2-output/CHIPInteractionModel.jar | grep -Fq 'chip/devicecontroller/GetConnectedDeviceCallbackJni\\$GetConnectedDeviceCallback.class'
+          jar tf stage2-output/CHIPInteractionModel.jar | grep -Fq 'chip/devicecontroller/ReportCallback.class'
+          jar tf stage2-output/CHIPInteractionModel.jar | grep -Fq 'chip/devicecontroller/model/NodeState.class'
+          jar tf stage2-output/CHIPInteractionModel.jar | grep -Fq 'chip/devicecontroller/ChipClusters\\$OnOffCluster.class'
           file stage2-output/libCHIPController.so
-          sha256sum stage2-output/libCHIPController.so stage2-output/CHIPController.jar \
-            > stage2-output/SHA256SUMS.txt
+          ( cd stage2-output && sha256sum libCHIPController.so *.jar > SHA256SUMS.txt )
 
       - name: Upload ARM64 libraries
         uses: actions/upload-artifact@v4
