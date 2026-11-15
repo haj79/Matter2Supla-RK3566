@@ -49,7 +49,12 @@ jobs:
       - name: Checkout official Matter SDK
         shell: bash
         run: |
-          git clone --depth 1 https://github.com/project-chip/connectedhomeip.git matter-sdk
+          # Keep this SDK revision identical to the controller already used by SUPLA(t).
+          mkdir matter-sdk
+          git -C matter-sdk init
+          git -C matter-sdk remote add origin https://github.com/project-chip/connectedhomeip.git
+          git -C matter-sdk fetch --depth 1 origin a35a5740060f882f1b58a479011fcf650c3e1a19
+          git -C matter-sdk checkout --detach FETCH_HEAD
           git -C matter-sdk rev-parse HEAD > matter-sdk-revision.txt
 
       - name: Checkout Matter SDK submodules
@@ -63,6 +68,21 @@ jobs:
           test -f third_party/uriparser/repo/src/UriParse.c
 
 
+
+      - name: Use canonical Maven Central endpoint for Matter Java dependencies
+        working-directory: matter-sdk
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Upstream set_up_java_deps.sh hardcodes repo1.maven.org; it returns 403
+          # for some GitHub-hosted runners. Change only the mirror, not versions.
+          SCRIPT=third_party/java_deps/set_up_java_deps.sh
+          test -f "$SCRIPT"
+          grep -q 'repo1.maven.org' "$SCRIPT"
+          sed -i 's/repo1.maven.org/repo.maven.apache.org/g' "$SCRIPT"
+          # Make transient CDN failures retriable and report the rejected URL.
+          sed -i 's/curl --fail --location --silent --show-error/curl --retry 4 --retry-all-errors --retry-delay 3 --fail --location --silent --show-error/g' "$SCRIPT"
+          grep 'download_jar' "$SCRIPT" | tail -n 12
 
       - name: Generate Android ARM64 Matter build files
         working-directory: matter-sdk
