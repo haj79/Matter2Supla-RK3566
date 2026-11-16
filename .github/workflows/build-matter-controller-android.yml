@@ -152,9 +152,10 @@ jobs:
           # GetObjectRefType, NewGlobalRef, or any other validating JNI operation.
           success = "    jvalue successArgs[1] = {};"
           assert s.count(success) == 1
-          s = s.replace(success, """    ChipLogError(Controller, "CASE-OWNER success self=%p callback=%p wrapper=%p env=%p",
+          s = s.replace(success, """    ChipLogError(Controller, "CASE-OWNER success self=%p callback=%p wrapper=%p device=%p method=%p env=%p",
                            static_cast<void *>(self), static_cast<void *>(javaCallback),
-                           static_cast<void *>(globalRef.ObjectRef()), static_cast<void *>(env));
+                           static_cast<void *>(globalRef.ObjectRef()), static_cast<void *>(device),
+                           reinterpret_cast<void *>(successMethod), static_cast<void *>(env));
               jvalue successArgs[1] = {};""")
           failure = "    jvalue failureArgs[2] = {};"
           assert s.count(failure) == 1
