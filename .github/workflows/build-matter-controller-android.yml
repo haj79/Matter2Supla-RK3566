@@ -220,7 +220,7 @@ jobs:
           content = build.read_text()
           old = '    "src/chip/devicecontroller/GetConnectedDeviceCallbackJni.java",'
           assert content.count(old) == 1
-          content = content.replace(old, old + '\\n    "src/chip/devicecontroller/SuplaCaseCallbackAdapter.java",')
+          content = content.replace(old, old + '\n    "src/chip/devicecontroller/SuplaCaseCallbackAdapter.java",')
           build.write_text(content)
           print("Built concrete primitive-long callback adapter into Matter Java API")
           PY
