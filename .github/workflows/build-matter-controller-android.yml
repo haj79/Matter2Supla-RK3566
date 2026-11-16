@@ -82,7 +82,25 @@ jobs:
           sed -i 's/repo1.maven.org/repo.maven.apache.org/g' "$SCRIPT"
           # Make transient CDN failures retriable and report the rejected URL.
           sed -i 's/curl --fail --location --silent --show-error/curl --retry 4 --retry-all-errors --retry-delay 3 --fail --location --silent --show-error/g' "$SCRIPT"
-          grep 'download_jar' "$SCRIPT" | tail -n 12
+          # The final upstream dependency is hosted at dist.wso2.org (403).
+          # Fetch the same Google Collections 1.0-rc1 library from Maven Central.
+          # This jar is only used for Java test dependencies, not packaged into the APK.
+          python3 - <<'PY'
+          from pathlib import Path
+          script = Path("third_party/java_deps/set_up_java_deps.sh")
+          text = script.read_text()
+          old = 'download_jar "dist.wso2.org" "com/google/common/google-collect/1.0-rc1/" "google-collect-1.0-rc1.jar"'
+          new = '''if [ ! -s third_party/java_deps/artifacts/google-collect-1.0-rc1.jar ]; then
+              curl --retry 4 --retry-all-errors --retry-delay 3 --fail --location --show-error \\
+                https://repo.maven.apache.org/maven2/com/google/collections/google-collections/1.0-rc1/google-collections-1.0-rc1.jar \\
+                -o third_party/java_deps/artifacts/google-collect-1.0-rc1.jar
+          fi'''
+          if text.count(old) != 1:
+              raise SystemExit("Expected WSO2 dependency line not found exactly once")
+          script.write_text(text.replace(old, new))
+          PY
+          echo "Maven dependency sources after patch:"
+          grep -E 'download_jar|google-collections-1.0-rc1.jar' "$SCRIPT" | tail -n 16
 
       - name: Generate Android ARM64 Matter build files
         working-directory: matter-sdk
