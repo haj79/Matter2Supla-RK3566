@@ -254,6 +254,23 @@ jobs:
               public void onError(Exception error) { delegate.onError(error); }
             }
 
+            public static final class Unpair implements UnpairDeviceCallback {
+              private final UnpairDeviceCallback delegate;
+
+              public Unpair(UnpairDeviceCallback delegate) {
+                if (delegate == null) throw new NullPointerException("delegate");
+                this.delegate = delegate;
+              }
+
+              @Override
+              public void onSuccess(long remoteDeviceId) { delegate.onSuccess(remoteDeviceId); }
+
+              @Override
+              public void onError(int status, long remoteDeviceId) {
+                delegate.onError(status, remoteDeviceId);
+              }
+            }
+
             public static final class State implements ChipClusters.BooleanAttributeCallback {
               private final ChipClusters.BooleanAttributeCallback delegate;
 
