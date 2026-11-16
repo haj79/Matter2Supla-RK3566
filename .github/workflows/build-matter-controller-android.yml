@@ -225,6 +225,65 @@ jobs:
           print("Built concrete primitive-long callback adapter into Matter Java API")
           PY
 
+      - name: Add typed OnOff response and state callback adapters
+        working-directory: matter-sdk
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          java = Path("src/controller/java/src/chip/devicecontroller/SuplaOnOffCallbackAdapters.java")
+          java.write_text("""package chip.devicecontroller;
+
+          /** Typed Java entry points for Matter OnOff responses. */
+          public final class SuplaOnOffCallbackAdapters {
+            private SuplaOnOffCallbackAdapters() {}
+
+            public static final class Command implements ChipClusters.DefaultClusterCallback {
+              private final ChipClusters.DefaultClusterCallback delegate;
+
+              public Command(ChipClusters.DefaultClusterCallback delegate) {
+                if (delegate == null) throw new NullPointerException("delegate");
+                this.delegate = delegate;
+              }
+
+              @Override
+              public void onSuccess() { delegate.onSuccess(); }
+
+              @Override
+              public void onError(Exception error) { delegate.onError(error); }
+            }
+
+            public static final class State implements ChipClusters.BooleanAttributeCallback {
+              private final ChipClusters.BooleanAttributeCallback delegate;
+
+              public State(ChipClusters.BooleanAttributeCallback delegate) {
+                if (delegate == null) throw new NullPointerException("delegate");
+                this.delegate = delegate;
+              }
+
+              @Override
+              public void onSuccess(boolean value) { delegate.onSuccess(value); }
+
+              @Override
+              public void onError(Exception error) { delegate.onError(error); }
+
+              @Override
+              public void onSubscriptionEstablished(long subscriptionId) {
+                delegate.onSubscriptionEstablished(subscriptionId);
+              }
+            }
+          }
+          """)
+          build = Path("src/controller/java/BUILD.gn")
+          content = build.read_text()
+          old = '    "src/chip/devicecontroller/SuplaCaseCallbackAdapter.java",'
+          assert content.count(old) == 1, "CASE adapter source listing changed"
+          content = content.replace(old, old + '\n    "src/chip/devicecontroller/SuplaOnOffCallbackAdapters.java",')
+          build.write_text(content)
+          print("Added typed OnOff callback adapters")
+          PY
+
       - name: Generate Android ARM64 Matter build files
         working-directory: matter-sdk
         shell: bash
