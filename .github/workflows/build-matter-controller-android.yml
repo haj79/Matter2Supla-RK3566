@@ -123,9 +123,38 @@ jobs:
                              ChipLogError(Controller, "Could not pin CASE Java callback in %s", __func__));"""
           assert source.count(before) == 2, "Pinned SDK's CASE callback pattern changed"
           source = source.replace(before, after)
+          # The crash address maps exactly to the success callback's CallVoidMethod.
+          # Log the original global and pinned local JNI reference *before* invoking
+          # Java. Android ART requires local/global handles to have nonzero kind bits.
+          # An invalid handle must not be passed into CheckJNI, which aborts the app.
+          success_call = """    DeviceLayer::StackUnlock unlock;
+              env->CallVoidMethod(javaCallback, successMethod, reinterpret_cast<jlong>(device));"""
+          guarded_call = """    DeviceLayer::StackUnlock unlock;
+              const uintptr_t callbackHandleValue = reinterpret_cast<uintptr_t>(javaCallback);
+              ChipLogError(Controller, "CASE-JNI success: javaCallback=%p kind=%lu (1=local,2=global,3=weak)",
+                           static_cast<void *>(javaCallback), static_cast<unsigned long>(callbackHandleValue & 3U));
+              if ((callbackHandleValue & 3U) == 0)
+              {
+                  ChipLogError(Controller, "CASE-JNI invalid Java callback handle; skip invocation to prevent SIGABRT");
+                  delete device;
+                  return;
+              }
+              env->CallVoidMethod(javaCallback, successMethod, reinterpret_cast<jlong>(device));"""
+          assert source.count(success_call) == 1, "Expected single CASE success callback"
+          source = source.replace(success_call, guarded_call)
+          # Capture values immediately after creating the local reference too.
+          local_ref = """    jobject javaCallback = env->NewLocalRef(self->mJavaCallbackRef.ObjectRef());
+              VerifyOrReturn(javaCallback != nullptr,"""
+          logged_ref = """    jobject javaCallback = env->NewLocalRef(self->mJavaCallbackRef.ObjectRef());
+              ChipLogError(Controller, "CASE-JNI callback acquired: global=%p local=%p",
+                           static_cast<void *>(self->mJavaCallbackRef.ObjectRef()), static_cast<void *>(javaCallback));
+              VerifyOrReturn(javaCallback != nullptr,"""
+          assert source.count(local_ref) == 2
+          source = source.replace(local_ref, logged_ref)
           path.write_text(source)
           assert source.count('env->NewLocalRef(self->mJavaCallbackRef.ObjectRef())') == 2
-          print("Pinned JNI references in CASE success and failure callbacks")
+          print("Instrumented native CASE callback reference acquisition and delivery")
+
           PY
 
       - name: Generate Android ARM64 Matter build files
