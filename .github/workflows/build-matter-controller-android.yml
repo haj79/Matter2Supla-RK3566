@@ -102,6 +102,32 @@ jobs:
           echo "Maven dependency sources after patch:"
           grep -E 'download_jar|google-collections-1.0-rc1.jar' "$SCRIPT" | tail -n 16
 
+      - name: Pin JNI callback reference through unlocked CASE delivery
+        working-directory: matter-sdk
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("src/controller/java/AndroidCallbacks.cpp")
+          source = path.read_text()
+          # CASE completion unlocks the CHIP stack before invoking Java.
+          # Use a JNI local reference in that thread so the Java callback
+          # remains alive even if the original global ref is released concurrently.
+          before = """    jobject javaCallback = self->mJavaCallbackRef.ObjectRef();
+              JniLocalReferenceScope scope(env);"""
+          after = """    JniLocalReferenceScope scope(env);
+              jobject javaCallback = env->NewLocalRef(self->mJavaCallbackRef.ObjectRef());
+              VerifyOrReturn(javaCallback != nullptr,
+                             ChipLogError(Controller, "Could not pin CASE Java callback in %s", __func__));"""
+          assert source.count(before) == 2, "Pinned SDK's CASE callback pattern changed"
+          source = source.replace(before, after)
+          path.write_text(source)
+          assert source.count('env->NewLocalRef(self->mJavaCallbackRef.ObjectRef())') == 2
+          print("Pinned JNI references in CASE success and failure callbacks")
+          PY
+
       - name: Generate Android ARM64 Matter build files
         working-directory: matter-sdk
         shell: bash
