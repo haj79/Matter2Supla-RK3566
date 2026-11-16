@@ -254,23 +254,6 @@ jobs:
               public void onError(Exception error) { delegate.onError(error); }
             }
 
-            public static final class Unpair implements UnpairDeviceCallback {
-              private final UnpairDeviceCallback delegate;
-
-              public Unpair(UnpairDeviceCallback delegate) {
-                if (delegate == null) throw new NullPointerException("delegate");
-                this.delegate = delegate;
-              }
-
-              @Override
-              public void onSuccess(long remoteDeviceId) { delegate.onSuccess(remoteDeviceId); }
-
-              @Override
-              public void onError(int status, long remoteDeviceId) {
-                delegate.onError(status, remoteDeviceId);
-              }
-            }
-
             public static final class State implements ChipClusters.BooleanAttributeCallback {
               private final ChipClusters.BooleanAttributeCallback delegate;
 
@@ -298,7 +281,33 @@ jobs:
           assert content.count(old) == 1, "CASE adapter source listing changed"
           content = content.replace(old, old + '\n    "src/chip/devicecontroller/SuplaOnOffCallbackAdapters.java",')
           build.write_text(content)
-          print("Added typed OnOff callback adapters")
+          unpair = Path("src/controller/java/src/chip/devicecontroller/SuplaUnpairCallbackAdapter.java")
+          unpair.write_text("""package chip.devicecontroller;
+
+          /** Java callback wrapper kept in CHIPController.jar beside UnpairDeviceCallback. */
+          public final class SuplaUnpairCallbackAdapter implements UnpairDeviceCallback {
+            private final UnpairDeviceCallback delegate;
+
+            public SuplaUnpairCallbackAdapter(UnpairDeviceCallback delegate) {
+              if (delegate == null) throw new NullPointerException("delegate");
+              this.delegate = delegate;
+            }
+
+            @Override
+            public void onSuccess(long remoteDeviceId) { delegate.onSuccess(remoteDeviceId); }
+
+            @Override
+            public void onError(int status, long remoteDeviceId) {
+              delegate.onError(status, remoteDeviceId);
+            }
+          }
+          """)
+          content = build.read_text()
+          old = '    "src/chip/devicecontroller/UnpairDeviceCallback.java",'
+          assert content.count(old) == 1, "UnpairDeviceCallback source listing changed"
+          content = content.replace(old, old + '\n    "src/chip/devicecontroller/SuplaUnpairCallbackAdapter.java",')
+          build.write_text(content)
+          print("Added typed OnOff and Unpair callback adapters to their proper Java targets")
           PY
 
       - name: Generate Android ARM64 Matter build files
