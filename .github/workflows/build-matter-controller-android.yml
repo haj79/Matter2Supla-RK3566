@@ -182,6 +182,49 @@ jobs:
           print("CASE ownership checkpoints installed; no JNI lifecycle or ABI logic altered")
           PY
 
+      - name: Add typed Java callback bridge for Android ART
+        working-directory: matter-sdk
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          java = Path("src/controller/java/src/chip/devicecontroller/SuplaCaseCallbackAdapter.java")
+          java.write_text("""package chip.devicecontroller;
+
+          /**
+           * JNI calls a concrete Java class with an unambiguous primitive long signature.
+           * Delegation to the Kotlin dynamic proxy happens only after leaving JNI.
+           */
+          public final class SuplaCaseCallbackAdapter
+              implements GetConnectedDeviceCallbackJni.GetConnectedDeviceCallback {
+            private final GetConnectedDeviceCallbackJni.GetConnectedDeviceCallback delegate;
+
+            public SuplaCaseCallbackAdapter(GetConnectedDeviceCallbackJni.GetConnectedDeviceCallback delegate) {
+              if (delegate == null) throw new NullPointerException("delegate");
+              this.delegate = delegate;
+            }
+
+            @Override
+            public void onDeviceConnected(long devicePointer) {
+              delegate.onDeviceConnected(devicePointer);
+            }
+
+            @Override
+            public void onConnectionFailure(long nodeId, Exception error) {
+              delegate.onConnectionFailure(nodeId, error);
+            }
+          }
+          """)
+          build = Path("src/controller/java/BUILD.gn")
+          content = build.read_text()
+          old = '    "src/chip/devicecontroller/GetConnectedDeviceCallbackJni.java",'
+          assert content.count(old) == 1
+          content = content.replace(old, old + '\\n    "src/chip/devicecontroller/SuplaCaseCallbackAdapter.java",')
+          build.write_text(content)
+          print("Built concrete primitive-long callback adapter into Matter Java API")
+          PY
+
       - name: Generate Android ARM64 Matter build files
         working-directory: matter-sdk
         shell: bash
