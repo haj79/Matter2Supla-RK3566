@@ -432,7 +432,8 @@ jobs:
               found.resolutionData.ipAddress[0] = ip;
               found.resolutionData.port = static_cast<uint16_t>(port);
               found.resolutionData.interfaceId = chip::Inet::InterfaceId::Null();
-              chip::AddressResolve::Impl::Resolver::Instance().OnOperationalNodeResolved(found);
+              static_cast<chip::AddressResolve::Impl::Resolver &>(chip::AddressResolve::Resolver::Instance())
+                  .OnOperationalNodeResolved(found);
               ChipLogProgress(Controller, "SUPLA NSD bridge: resolved node=%llu port=%u",
                               static_cast<unsigned long long>(nodeId), static_cast<unsigned>(port));
           }
