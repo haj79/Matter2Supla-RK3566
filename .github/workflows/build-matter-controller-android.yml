@@ -339,7 +339,7 @@ jobs:
           anchor = "JNI_METHOD(jobject, getNetworkLocation)"
           assert code.count(anchor) == 1
           method = """// Only used when switching the Wi-Fi network of this specific Matter node.
-// Never expire other nodes, the controller fabric, or commissioning credentials.
+          // Never expire other nodes, the controller fabric, or commissioning credentials.
           JNI_METHOD(void, suplaExpireSessionsNative)(JNIEnv * env, jobject self, jlong handle, jlong nodeId)
           {
               chip::DeviceLayer::StackLock lock;
