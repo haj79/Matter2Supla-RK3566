@@ -310,6 +310,59 @@ jobs:
           print("Added typed OnOff and Unpair callback adapters to their proper Java targets")
           PY
 
+      - name: Expose safe per-node CASE session expiry for SUPLA(t)
+        working-directory: matter-sdk
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          java = Path("src/controller/java/src/chip/devicecontroller/ChipDeviceController.java")
+          code = java.read_text()
+          anchor = "  public void releaseConnectedDevicePointer(long devicePtr) {"
+          assert code.count(anchor) == 1
+          method = """  /**
+           * Expire the old operational CASE session after a confirmed Wi-Fi transition.
+           * A subsequent getConnectedDevicePointer will perform new operational discovery.
+           */
+          public void suplaExpireSessions(long nodeId) {
+            suplaExpireSessionsNative(deviceControllerPtr, nodeId);
+          }
+
+          private native void suplaExpireSessionsNative(long controllerPtr, long nodeId);
+
+          """
+          java.write_text(code.replace(anchor, method + anchor))
+
+          native = Path("src/controller/java/CHIPDeviceController-JNI.cpp")
+          code = native.read_text()
+          anchor = "JNI_METHOD(jobject, getNetworkLocation)"
+          assert code.count(anchor) == 1
+          method = """// Only used when switching the Wi-Fi network of this specific Matter node.
+// Never expire other nodes, the controller fabric, or commissioning credentials.
+          JNI_METHOD(void, suplaExpireSessionsNative)(JNIEnv * env, jobject self, jlong handle, jlong nodeId)
+          {
+              chip::DeviceLayer::StackLock lock;
+              AndroidDeviceControllerWrapper * wrapper = AndroidDeviceControllerWrapper::FromJNIHandle(handle);
+              if (wrapper == nullptr || wrapper->Controller() == nullptr || wrapper->Controller()->SessionMgr() == nullptr)
+              {
+                  ChipLogError(Controller, "SUPLA CASE expiry: controller unavailable");
+                  return;
+              }
+              auto * controller = wrapper->Controller();
+              controller->SessionMgr()->ExpireAllSessions(controller->GetPeerScopedId(static_cast<chip::NodeId>(nodeId)));
+              ChipLogProgress(Controller, "SUPLA CASE expiry: node=%" PRIu64, static_cast<uint64_t>(nodeId));
+          }
+
+          """
+          # SessionManager owns ExpireAllSessions(ScopedNodeId). Controller provides SessionMgr().
+          if "#include <transport/SessionManager.h>" not in code:
+            code = code.replace('#include <controller/CHIPDeviceController.h>',
+                                '#include <controller/CHIPDeviceController.h>\n#include <transport/SessionManager.h>')
+          native.write_text(code.replace(anchor, method + anchor))
+          print("Built-in Java and JNI API for expiring only the target Matter CASE session")
+          PY
+
       - name: Generate Android ARM64 Matter build files
         working-directory: matter-sdk
         shell: bash
