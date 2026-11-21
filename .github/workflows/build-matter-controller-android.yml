@@ -379,14 +379,23 @@ jobs:
            * CHIP operational lookup. The CASE handshake still authenticates the peer.
            */
           public void suplaOperationalAddressResolved(long nodeId, String address, int port) {
-            if (address == null || address.isEmpty() || port < 1 || port > 65535) {
+            suplaOperationalAddressResolved(nodeId, address, port, 0);
+          }
+
+          /**
+           * The interface index is essential for IPv6 link-local addresses (fe80::).
+           * For routable IPv6 and IPv4, pass 0 and rely on the routing table.
+           */
+          public void suplaOperationalAddressResolved(long nodeId, String address, int port, int interfaceIndex) {
+            if (address == null || address.isEmpty() || port < 1 || port > 65535 ||
+                interfaceIndex < 0) {
               throw new IllegalArgumentException("Invalid Matter operational address");
             }
-            suplaOperationalAddressResolvedNative(deviceControllerPtr, nodeId, address, port);
+            suplaOperationalAddressResolvedNative(deviceControllerPtr, nodeId, address, port, interfaceIndex);
           }
 
           private native void suplaOperationalAddressResolvedNative(long controllerPtr, long nodeId,
-                                                                     String address, int port);
+                                                                     String address, int port, int interfaceIndex);
 
           """
           java.write_text(code.replace(anchor, method + anchor))
@@ -402,11 +411,13 @@ jobs:
           // against this controller fabric and target node before calling JNI.
           // This only feeds a pending address lookup; CASE still verifies identity.
           JNI_METHOD(void, suplaOperationalAddressResolvedNative)(JNIEnv * env, jobject self, jlong handle,
-                                                                     jlong nodeId, jstring address, jint port)
+                                                                     jlong nodeId, jstring address, jint port,
+                                                                     jint interfaceIndex)
           {
               chip::DeviceLayer::StackLock lock;
               AndroidDeviceControllerWrapper * wrapper = AndroidDeviceControllerWrapper::FromJNIHandle(handle);
-              if (wrapper == nullptr || wrapper->Controller() == nullptr || address == nullptr || port < 1 || port > 65535)
+              if (wrapper == nullptr || wrapper->Controller() == nullptr || address == nullptr ||
+                  port < 1 || port > 65535 || interfaceIndex < 0)
               {
                   ChipLogError(Controller, "SUPLA NSD bridge: invalid controller or address");
                   return;
@@ -431,7 +442,14 @@ jobs:
               found.resolutionData.numIPs = 1;
               found.resolutionData.ipAddress[0] = ip;
               found.resolutionData.port = static_cast<uint16_t>(port);
-              found.resolutionData.interfaceId = chip::Inet::InterfaceId::Null();
+              if (ip.IsIPv6LinkLocal() && interfaceIndex == 0)
+              {
+                  ChipLogError(Controller, "SUPLA NSD bridge: IPv6 link-local address requires interface index");
+                  return;
+              }
+              found.resolutionData.interfaceId = (ip.IsIPv6LinkLocal() && interfaceIndex > 0)
+                  ? chip::Inet::InterfaceId(static_cast<chip::Inet::InterfaceId::PlatformType>(interfaceIndex))
+                  : chip::Inet::InterfaceId::Null();
               static_cast<chip::AddressResolve::Impl::Resolver &>(chip::AddressResolve::Resolver::Instance())
                   .OnOperationalNodeResolved(found);
               ChipLogProgress(Controller, "SUPLA NSD bridge: resolved node=%llu port=%u",
