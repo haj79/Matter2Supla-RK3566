@@ -363,6 +363,85 @@ jobs:
           print("Built-in Java and JNI API for expiring only the target Matter CASE session")
           PY
 
+      - name: Bridge Android NSD operational addresses into CHIP resolver
+        working-directory: matter-sdk
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          java = Path("src/controller/java/src/chip/devicecontroller/ChipDeviceController.java")
+          code = java.read_text()
+          anchor = "  public void releaseConnectedDevicePointer(long devicePtr) {"
+          assert code.count(anchor) == 1, "CHIP Java bridge signature changed"
+          method = """  /**
+           * Supply an operational DNS-SD address found by Android NSD to a pending
+           * CHIP operational lookup. The CASE handshake still authenticates the peer.
+           */
+          public void suplaOperationalAddressResolved(long nodeId, String address, int port) {
+            if (address == null || address.isEmpty() || port < 1 || port > 65535) {
+              throw new IllegalArgumentException("Invalid Matter operational address");
+            }
+            suplaOperationalAddressResolvedNative(deviceControllerPtr, nodeId, address, port);
+          }
+
+          private native void suplaOperationalAddressResolvedNative(long controllerPtr, long nodeId,
+                                                                     String address, int port);
+
+          """
+          java.write_text(code.replace(anchor, method + anchor))
+
+          native = Path("src/controller/java/CHIPDeviceController-JNI.cpp")
+          code = native.read_text()
+          header = "#include <controller/CHIPDeviceController.h>"
+          assert code.count(header) == 1
+          code = code.replace(header, header + "\n#include <lib/address_resolve/AddressResolve_DefaultImpl.h>\n#include <lib/dnssd/Types.h>")
+          anchor = "JNI_METHOD(jobject, getNetworkLocation)"
+          assert code.count(anchor) == 1
+          method = """// Android NsdManager already validated this operational service instance
+          // against this controller fabric and target node before calling JNI.
+          // This only feeds a pending address lookup; CASE still verifies identity.
+          JNI_METHOD(void, suplaOperationalAddressResolvedNative)(JNIEnv * env, jobject self, jlong handle,
+                                                                     jlong nodeId, jstring address, jint port)
+          {
+              chip::DeviceLayer::StackLock lock;
+              AndroidDeviceControllerWrapper * wrapper = AndroidDeviceControllerWrapper::FromJNIHandle(handle);
+              if (wrapper == nullptr || wrapper->Controller() == nullptr || address == nullptr || port < 1 || port > 65535)
+              {
+                  ChipLogError(Controller, "SUPLA NSD bridge: invalid controller or address");
+                  return;
+              }
+              const char * value = env->GetStringUTFChars(address, nullptr);
+              if (value == nullptr)
+              {
+                  return;
+              }
+              chip::Inet::IPAddress ip;
+              bool parsed = chip::Inet::IPAddress::FromString(value, ip);
+              env->ReleaseStringUTFChars(address, value);
+              if (!parsed)
+              {
+                  ChipLogError(Controller, "SUPLA NSD bridge: invalid IP");
+                  return;
+              }
+              chip::Controller::DeviceController * controller = wrapper->Controller();
+              chip::Dnssd::ResolvedNodeData found;
+              found.operationalData.peerId =
+                  chip::PeerId(controller->GetCompressedFabricId(), static_cast<chip::NodeId>(nodeId));
+              found.resolutionData.numIPs = 1;
+              found.resolutionData.ipAddress[0] = ip;
+              found.resolutionData.port = static_cast<uint16_t>(port);
+              found.resolutionData.interfaceId = chip::Inet::InterfaceId::Null();
+              chip::AddressResolve::Impl::Resolver::Instance().OnOperationalNodeResolved(found);
+              ChipLogProgress(Controller, "SUPLA NSD bridge: resolved node=%llu port=%u",
+                              static_cast<unsigned long long>(nodeId), static_cast<unsigned>(port));
+          }
+
+          """
+          native.write_text(code.replace(anchor, method + anchor))
+          print("Android NSD to CHIP operational address resolver bridge installed")
+          PY
+
       - name: Generate Android ARM64 Matter build files
         working-directory: matter-sdk
         shell: bash
