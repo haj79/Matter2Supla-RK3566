@@ -461,6 +461,68 @@ jobs:
           print("Android NSD to CHIP operational address resolver bridge installed")
           PY
 
+      - name: Harden attestation JNI and build concrete trust-store adapter
+        working-directory: matter-sdk
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          # The Java proxy is retained by Kotlin, but JNI receives a concrete
+          # class with a stable, explicit byte[] -> byte[] method signature.
+          java = Path("src/controller/java/src/chip/devicecontroller/SuplaAttestationTrustStoreAdapter.java")
+          java.write_text("""package chip.devicecontroller;
+
+          /** Concrete synchronous PAA lookup adapter for ART/JNI. */
+          public final class SuplaAttestationTrustStoreAdapter implements AttestationTrustStoreDelegate {
+            private final AttestationTrustStoreDelegate delegate;
+
+            public SuplaAttestationTrustStoreAdapter(AttestationTrustStoreDelegate delegate) {
+              if (delegate == null) throw new IllegalArgumentException("delegate is null");
+              this.delegate = delegate;
+            }
+
+            @Override
+            public byte[] getProductAttestationAuthorityCert(byte[] skid) {
+              return delegate.getProductAttestationAuthorityCert(skid);
+            }
+          }
+          """)
+
+          build = Path("src/controller/java/BUILD.gn")
+          code = build.read_text()
+          anchor = '    "src/chip/devicecontroller/AttestationTrustStoreDelegate.java",'
+          assert code.count(anchor) == 1, "Matter Java BUILD.gn target changed"
+          build.write_text(code.replace(anchor,
+              anchor + '\n    "src/chip/devicecontroller/SuplaAttestationTrustStoreAdapter.java",'))
+
+          # Localize the JNI global reference for the full PAA callback;
+          # pass the byte-array argument via typed jvalue instead of varargs.
+          # Keep the original certificate verification and trusted PAA intact.
+          native = Path("src/controller/java/AttestationTrustStoreBridge.cpp")
+          code = native.read_text()
+          old = "    VerifyOrReturnError(mAttestationTrustStoreDelegate.HasValidObjectRef(), CHIP_ERROR_INCORRECT_STATE);"
+          new = old + """
+              jobject localDelegate = env->NewLocalRef(mAttestationTrustStoreDelegate.ObjectRef());
+              VerifyOrReturnError(localDelegate != nullptr, CHIP_ERROR_INCORRECT_STATE);"""
+          assert code.count(old) == 1, "PAA bridge validity check changed"
+          code = code.replace(old, new)
+          old = "env, mAttestationTrustStoreDelegate.ObjectRef(),"
+          assert code.count(old) == 1, "PAA bridge method lookup changed"
+          code = code.replace(old, "env, localDelegate,")
+          old = """    jbyteArray javaPaaCert = (jbyteArray) env->CallObjectMethod(mAttestationTrustStoreDelegate.ObjectRef(),
+                                                                getProductAttestationAuthorityCertMethod, javaSkid);"""
+          new = """    jvalue callArgs[1] = {};
+              callArgs[0].l = javaSkid;
+              jbyteArray javaPaaCert = static_cast<jbyteArray>(
+                  env->CallObjectMethodA(localDelegate, getProductAttestationAuthorityCertMethod, callArgs));
+              VerifyOrReturnError(!env->ExceptionCheck(), CHIP_JNI_ERROR_EXCEPTION_THROWN);"""
+          assert code.count(old) == 1, "PAA bridge invocation changed"
+          native.write_text(code.replace(old, new))
+          print("Verified typed PAA JNI bridge and concrete Java adapter installed")
+          PY
+
       - name: Generate Android ARM64 Matter build files
         working-directory: matter-sdk
         shell: bash
