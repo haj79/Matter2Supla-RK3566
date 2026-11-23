@@ -1,4 +1,5 @@
 name: Cleanup old build artifacts (keep 3)
+# Only cleans obsolete artifacts; does not compile Android or Matter.
 
 on:
   workflow_dispatch:
