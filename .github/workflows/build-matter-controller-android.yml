@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  actions: write
 
 jobs:
   matter-controller-android:
@@ -583,4 +584,20 @@ jobs:
           name: matter-controller-android-arm64-stage2
           path: stage2-output/
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 90
+
+      - name: Keep only the 3 newest Matter ARM64 library artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Preserve the newest 3 Stage 2 bundles required by SUPLA(t).
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/artifacts?per_page=100" \
+            --jq '.artifacts[] | select(.name == "matter-controller-android-arm64-stage2") | {id, created_at}' \
+            | jq -sr 'sort_by(.created_at) | reverse | .[3:] | .[].id' \
+            | while read -r artifact_id; do
+                [ -n "$artifact_id" ] || continue
+                echo "Removing obsolete Matter library artifact: $artifact_id"
+                gh api -X DELETE "repos/${GITHUB_REPOSITORY}/actions/artifacts/$artifact_id"
+              done
