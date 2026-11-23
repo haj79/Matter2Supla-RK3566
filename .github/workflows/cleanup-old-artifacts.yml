@@ -1,0 +1,33 @@
+name: Cleanup old build artifacts (keep 3)
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/cleanup-old-artifacts.yml'
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Keep the latest 3 Matter ARM64 libraries artifacts
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          REPO="${GITHUB_REPOSITORY}"
+          NAME="matter-controller-android-arm64-stage2"
+          gh api --paginate "repos/$REPO/actions/artifacts?per_page=100" \
+            --jq '.artifacts[] | select(.name == "'"$NAME"'") | {id, created_at, expired}' \
+            | jq -sr 'sort_by(.created_at) | reverse | .[3:] | .[].id' \
+            | while read -r artifact_id; do
+                [ -n "$artifact_id" ] || continue
+                echo "Deleting obsolete $NAME artifact ID $artifact_id"
+                gh api -X DELETE "repos/$REPO/actions/artifacts/$artifact_id"
+              done
+          echo "Artifact cleanup completed, newest three $NAME artifacts retained."
