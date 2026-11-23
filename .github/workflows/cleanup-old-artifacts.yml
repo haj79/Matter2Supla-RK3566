@@ -52,10 +52,10 @@ jobs:
               done
           # Also remove earlier cleanup-only runs from the Actions list, excluding this active run.
           gh api --paginate "repos/$REPO/actions/runs?per_page=100" \
-            --jq '.workflow_runs[] | select(.name == "Cleanup old build artifacts (keep 3)" or .name == "Cleanup build artifacts and old runs") | {id, status}' \
+            --jq '.workflow_runs[] | select(.name != "Stage 2 - Native Matter controller for Android ARM64") | {id, status}' \
             | jq -sr --argjson current "$GITHUB_RUN_ID" '.[] | select(.id != $current and .status == "completed") | .id' \
             | while read -r run_id; do
                 [ -n "$run_id" ] || continue
-                echo "Deleting old cleanup run $run_id"
+                echo "Deleting obsolete non-Stage-2 run $run_id"
                 gh api -X DELETE "repos/$REPO/actions/runs/$run_id"
               done
