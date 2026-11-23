@@ -511,15 +511,17 @@ jobs:
           old = "env, mAttestationTrustStoreDelegate.ObjectRef(),"
           assert code.count(old) == 1, "PAA bridge method lookup changed"
           code = code.replace(old, "env, localDelegate,")
-          old = """    jbyteArray javaPaaCert = (jbyteArray) env->CallObjectMethod(mAttestationTrustStoreDelegate.ObjectRef(),
-                                                                getProductAttestationAuthorityCertMethod, javaSkid);"""
+          import re
+          pattern = (r"    jbyteArray javaPaaCert = \(jbyteArray\) env->CallObjectMethod"
+                     r"\(mAttestationTrustStoreDelegate\.ObjectRef\(\),\s*"
+                     r"getProductAttestationAuthorityCertMethod, javaSkid\);")
           new = """    jvalue callArgs[1] = {};
               callArgs[0].l = javaSkid;
               jbyteArray javaPaaCert = static_cast<jbyteArray>(
                   env->CallObjectMethodA(localDelegate, getProductAttestationAuthorityCertMethod, callArgs));
               VerifyOrReturnError(!env->ExceptionCheck(), CHIP_JNI_ERROR_EXCEPTION_THROWN);"""
-          assert code.count(old) == 1, "PAA bridge invocation changed"
-          native.write_text(code.replace(old, new))
+          assert len(re.findall(pattern, code)) == 1, "PAA bridge invocation changed"
+          native.write_text(re.sub(pattern, lambda _: new, code, count=1))
           print("Verified typed PAA JNI bridge and concrete Java adapter installed")
           PY
 
