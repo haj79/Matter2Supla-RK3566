@@ -564,6 +564,7 @@ jobs:
           done
           test -s stage2-output/libCHIPController.so
           test -s stage2-output/CHIPController.jar
+          jar tf stage2-output/CHIPController.jar | grep -Fq 'chip/devicecontroller/SuplaAttestationTrustStoreAdapter.class'
           # Fail early if this build cannot control devices or read their metadata.
           jar tf stage2-output/CHIPInteractionModel.jar > /tmp/matter-java-classes.txt
           grep -Fq 'chip/devicecontroller/GetConnectedDeviceCallbackJni$GetConnectedDeviceCallback.class' /tmp/matter-java-classes.txt
